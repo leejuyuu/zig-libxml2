@@ -26,7 +26,7 @@ fn testFile(comptime path: []const u8) ![:0]const u8 {
         const sepSlice = &[_]u8{std.fs.path.sep};
 
         // Build our path which has our relative test directory.
-        var path2 = "/../test/" ++ path;
+        const path2 = "/../test/" ++ path;
 
         // The path is expected to always use / so we replace it if its
         // a different value. If sep is / we technically don't have to do this

@@ -22,21 +22,21 @@ pub const Version = struct {
 
 /// This is the type returned by create.
 pub const Library = struct {
-    step: *std.build.LibExeObjStep,
+    step: *std.Build.Step.Compile,
 
     /// statically link this library into the given step
-    pub fn link(self: Library, other: *std.build.LibExeObjStep) void {
-        self.addIncludePaths(other);
+    pub fn link(self: Library, other: *std.Build.Step.Compile, b: *std.Build) void {
+        self.addIncludePaths(other, b);
         other.linkLibrary(self.step);
     }
 
     /// only add the include dirs to the given step. This is useful if building
     /// a static library that you don't want to fully link in the code of this
     /// library.
-    pub fn addIncludePaths(self: Library, other: *std.build.LibExeObjStep) void {
+    pub fn addIncludePaths(self: Library, other: *std.Build.Step.Compile, b: *std.Build) void {
         _ = self;
-        other.addIncludePath(.{ .path = include_dir });
-        other.addIncludePath(.{ .path = override_include_dir });
+        other.addIncludePath(b.path(include_dir));
+        other.addIncludePath(b.path(override_include_dir));
     }
 };
 
@@ -84,8 +84,8 @@ pub const Options = struct {
 /// use to link this library to their application. On the resulting Library,
 /// call the link function and given your own application step.
 pub fn create(
-    b: *std.build.Builder,
-    target: std.zig.CrossTarget,
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     opts: Options,
 ) !Library {
@@ -117,24 +117,28 @@ pub fn create(
         "-DWITHOUT_TRIO=1",
     });
 
-    if (!target.isWindows()) {
-        try flags.appendSlice(&.{
-            "-DHAVE_ARPA_INET_H=1",
-            "-DHAVE_ARPA_NAMESER_H=1",
-            "-DHAVE_DL_H=1",
-            "-DHAVE_NETDB_H=1",
-            "-DHAVE_NETINET_IN_H=1",
-            "-DHAVE_PTHREAD_H=1",
-            "-DHAVE_SHLLOAD=1",
-            "-DHAVE_SYS_DIR_H=1",
-            "-DHAVE_SYS_MMAN_H=1",
-            "-DHAVE_SYS_NDIR_H=1",
-            "-DHAVE_SYS_SELECT_H=1",
-            "-DHAVE_SYS_SOCKET_H=1",
-            "-DHAVE_SYS_TIMEB_H=1",
-            "-DHAVE_SYS_TIME_H=1",
-            "-DHAVE_SYS_TYPES_H=1",
-        });
+    var is_windows = false;
+    if (target.query.os_tag) |tag| {
+        if (tag == .windows) {
+            is_windows = true;
+            try flags.appendSlice(&.{
+                "-DHAVE_ARPA_INET_H=1",
+                "-DHAVE_ARPA_NAMESER_H=1",
+                "-DHAVE_DL_H=1",
+                "-DHAVE_NETDB_H=1",
+                "-DHAVE_NETINET_IN_H=1",
+                "-DHAVE_PTHREAD_H=1",
+                "-DHAVE_SHLLOAD=1",
+                "-DHAVE_SYS_DIR_H=1",
+                "-DHAVE_SYS_MMAN_H=1",
+                "-DHAVE_SYS_NDIR_H=1",
+                "-DHAVE_SYS_SELECT_H=1",
+                "-DHAVE_SYS_SOCKET_H=1",
+                "-DHAVE_SYS_TIMEB_H=1",
+                "-DHAVE_SYS_TIME_H=1",
+                "-DHAVE_SYS_TYPES_H=1",
+            });
+        }
     }
 
     // Option-specific changes
@@ -169,74 +173,68 @@ pub fn create(
     }
 
     // C files
-    ret.addCSourceFiles(srcs, flags.items);
+    ret.addCSourceFiles(.{ .root = b.path("libxml2"), .files = srcs, .flags = flags.items });
 
-    ret.addIncludePath(.{ .path = include_dir });
-    ret.addIncludePath(.{ .path = override_include_dir });
-    if (target.isWindows()) {
-        ret.addIncludePath(.{ .path = win32_include_dir });
+    ret.addIncludePath(b.path(include_dir));
+    ret.addIncludePath(b.path(override_include_dir));
+    if (is_windows) {
+        ret.addIncludePath(b.path("override/config/win32"));
         ret.linkSystemLibrary("ws2_32");
     } else {
-        ret.addIncludePath(.{ .path = posix_include_dir });
+        ret.addIncludePath(b.path("override/config/posix"));
     }
     ret.linkLibC();
 
     return Library{ .step = ret };
 }
 
-fn root() []const u8 {
-    return comptime (std.fs.path.dirname(@src().file) orelse unreachable) ++ "/";
-}
-
 /// Directories with our includes.
-const include_dir = root() ++ "libxml2/include";
-const override_include_dir = root() ++ "override/include";
-const posix_include_dir = root() ++ "override/config/posix";
-const win32_include_dir = root() ++ "override/config/win32";
+const include_dir = "libxml2/include";
+const override_include_dir = "override/include";
 
 const srcs = &.{
-    root() ++ "libxml2/buf.c",
-    root() ++ "libxml2/c14n.c",
-    root() ++ "libxml2/catalog.c",
-    root() ++ "libxml2/chvalid.c",
-    root() ++ "libxml2/debugXML.c",
-    root() ++ "libxml2/dict.c",
-    root() ++ "libxml2/encoding.c",
-    root() ++ "libxml2/entities.c",
-    root() ++ "libxml2/error.c",
-    root() ++ "libxml2/globals.c",
-    root() ++ "libxml2/hash.c",
-    root() ++ "libxml2/HTMLparser.c",
-    root() ++ "libxml2/HTMLtree.c",
-    root() ++ "libxml2/legacy.c",
-    root() ++ "libxml2/list.c",
-    root() ++ "libxml2/nanoftp.c",
-    root() ++ "libxml2/nanohttp.c",
-    root() ++ "libxml2/parser.c",
-    root() ++ "libxml2/parserInternals.c",
-    root() ++ "libxml2/pattern.c",
-    root() ++ "libxml2/relaxng.c",
-    root() ++ "libxml2/SAX.c",
-    root() ++ "libxml2/SAX2.c",
-    root() ++ "libxml2/schematron.c",
-    root() ++ "libxml2/threads.c",
-    root() ++ "libxml2/tree.c",
-    root() ++ "libxml2/uri.c",
-    root() ++ "libxml2/valid.c",
-    root() ++ "libxml2/xinclude.c",
-    root() ++ "libxml2/xlink.c",
-    root() ++ "libxml2/xmlIO.c",
-    root() ++ "libxml2/xmlmemory.c",
-    root() ++ "libxml2/xmlmodule.c",
-    root() ++ "libxml2/xmlreader.c",
-    root() ++ "libxml2/xmlregexp.c",
-    root() ++ "libxml2/xmlsave.c",
-    root() ++ "libxml2/xmlschemas.c",
-    root() ++ "libxml2/xmlschemastypes.c",
-    root() ++ "libxml2/xmlstring.c",
-    root() ++ "libxml2/xmlunicode.c",
-    root() ++ "libxml2/xmlwriter.c",
-    root() ++ "libxml2/xpath.c",
-    root() ++ "libxml2/xpointer.c",
-    root() ++ "libxml2/xzlib.c",
+    "buf.c",
+    "c14n.c",
+    "catalog.c",
+    "chvalid.c",
+    "debugXML.c",
+    "dict.c",
+    "encoding.c",
+    "entities.c",
+    "error.c",
+    "globals.c",
+    "hash.c",
+    "HTMLparser.c",
+    "HTMLtree.c",
+    "legacy.c",
+    "list.c",
+    "nanoftp.c",
+    "nanohttp.c",
+    "parser.c",
+    "parserInternals.c",
+    "pattern.c",
+    "relaxng.c",
+    "SAX.c",
+    "SAX2.c",
+    "schematron.c",
+    "threads.c",
+    "tree.c",
+    "uri.c",
+    "valid.c",
+    "xinclude.c",
+    "xlink.c",
+    "xmlIO.c",
+    "xmlmemory.c",
+    "xmlmodule.c",
+    "xmlreader.c",
+    "xmlregexp.c",
+    "xmlsave.c",
+    "xmlschemas.c",
+    "xmlschemastypes.c",
+    "xmlstring.c",
+    "xmlunicode.c",
+    "xmlwriter.c",
+    "xpath.c",
+    "xpointer.c",
+    "xzlib.c",
 };
