@@ -6,7 +6,12 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const xml2 = try libxml2.create(b, target, optimize, .{
+    const dep_xml2_c = b.dependency("libxml2", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const xml2 = try libxml2.create(b, dep_xml2_c, target, optimize, .{
         // We don't have the required libs so don't build these
         .iconv = false,
         .lzma = false,
@@ -15,7 +20,7 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(xml2.step);
 
     // Tests that we can depend on other libraries like zlib
-    const xml2_with_libs = try libxml2.create(b, target, optimize, .{
+    const xml2_with_libs = try libxml2.create(b, dep_xml2_c, target, optimize, .{
         // We don't have the required libs so don't build these
         .iconv = false,
         .lzma = false,

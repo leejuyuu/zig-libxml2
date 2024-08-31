@@ -2,10 +2,12 @@ const std = @import("std");
 
 /// The version information for this library. This is hardcoded for now but
 /// in the future we will parse this from configure.ac.
+// TODO: Still hardcoded for now, there will be a VERSION file starting from 2.14,
+// which is going to make things a lot easier.
 pub const Version = struct {
     pub const major = "2";
-    pub const minor = "9";
-    pub const micro = "12";
+    pub const minor = "10";
+    pub const micro = "2";
 
     pub fn number() []const u8 {
         return comptime major ++ "0" ++ minor ++ "0" ++ micro;
@@ -85,6 +87,7 @@ pub const Options = struct {
 /// call the link function and given your own application step.
 pub fn create(
     b: *std.Build,
+    dep: *std.Build.Dependency,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     opts: Options,
@@ -94,6 +97,8 @@ pub fn create(
         .target = target,
         .optimize = optimize,
     });
+
+    ret.installHeadersDirectory(dep.path("include/libxml"), "libxml", .{});
 
     var flags = std.ArrayList([]const u8).init(b.allocator);
     defer flags.deinit();
@@ -173,9 +178,9 @@ pub fn create(
     }
 
     // C files
-    ret.addCSourceFiles(.{ .root = b.path("libxml2"), .files = srcs, .flags = flags.items });
+    ret.addCSourceFiles(.{ .root = dep.path(""), .files = srcs, .flags = flags.items });
 
-    ret.addIncludePath(b.path(include_dir));
+    ret.addIncludePath(dep.path("include"));
     ret.addIncludePath(b.path(override_include_dir));
     if (is_windows) {
         ret.addIncludePath(b.path("override/config/win32"));
