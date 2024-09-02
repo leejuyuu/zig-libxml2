@@ -22,26 +22,6 @@ pub const Version = struct {
     }
 };
 
-/// This is the type returned by create.
-pub const Library = struct {
-    step: *std.Build.Step.Compile,
-
-    /// statically link this library into the given step
-    pub fn link(self: Library, other: *std.Build.Step.Compile, b: *std.Build) void {
-        self.addIncludePaths(other, b);
-        other.linkLibrary(self.step);
-    }
-
-    /// only add the include dirs to the given step. This is useful if building
-    /// a static library that you don't want to fully link in the code of this
-    /// library.
-    pub fn addIncludePaths(self: Library, other: *std.Build.Step.Compile, b: *std.Build) void {
-        _ = self;
-        other.addIncludePath(b.path(include_dir));
-        other.addIncludePath(b.path(override_include_dir));
-    }
-};
-
 /// Compile-time options for the library. These mostly correspond to
 /// options exposed by the native build system used by the library.
 pub const Options = struct {
@@ -82,24 +62,7 @@ pub const Options = struct {
     zlib: bool = true,
 };
 
-/// Create this library. This is the primary API users of build.zig should
-/// use to link this library to their application. On the resulting Library,
-/// call the link function and given your own application step.
-pub fn create(
-    b: *std.Build,
-    dep: *std.Build.Dependency,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    opts: Options,
-) !Library {
-    const ret = b.addStaticLibrary(.{
-        .name = "xml2",
-        .target = target,
-        .optimize = optimize,
-    });
-
-    ret.installHeadersDirectory(dep.path("include/libxml"), "libxml", .{});
-
+pub fn compile_flags(b: *std.Build, opts: Options, is_windows: bool) ![][]const u8 {
     var flags = std.ArrayList([]const u8).init(b.allocator);
     defer flags.deinit();
 
@@ -122,28 +85,24 @@ pub fn create(
         "-DWITHOUT_TRIO=1",
     });
 
-    var is_windows = false;
-    if (target.query.os_tag) |tag| {
-        if (tag == .windows) {
-            is_windows = true;
-            try flags.appendSlice(&.{
-                "-DHAVE_ARPA_INET_H=1",
-                "-DHAVE_ARPA_NAMESER_H=1",
-                "-DHAVE_DL_H=1",
-                "-DHAVE_NETDB_H=1",
-                "-DHAVE_NETINET_IN_H=1",
-                "-DHAVE_PTHREAD_H=1",
-                "-DHAVE_SHLLOAD=1",
-                "-DHAVE_SYS_DIR_H=1",
-                "-DHAVE_SYS_MMAN_H=1",
-                "-DHAVE_SYS_NDIR_H=1",
-                "-DHAVE_SYS_SELECT_H=1",
-                "-DHAVE_SYS_SOCKET_H=1",
-                "-DHAVE_SYS_TIMEB_H=1",
-                "-DHAVE_SYS_TIME_H=1",
-                "-DHAVE_SYS_TYPES_H=1",
-            });
-        }
+    if (is_windows) {
+        try flags.appendSlice(&.{
+            "-DHAVE_ARPA_INET_H=1",
+            "-DHAVE_ARPA_NAMESER_H=1",
+            "-DHAVE_DL_H=1",
+            "-DHAVE_NETDB_H=1",
+            "-DHAVE_NETINET_IN_H=1",
+            "-DHAVE_PTHREAD_H=1",
+            "-DHAVE_SHLLOAD=1",
+            "-DHAVE_SYS_DIR_H=1",
+            "-DHAVE_SYS_MMAN_H=1",
+            "-DHAVE_SYS_NDIR_H=1",
+            "-DHAVE_SYS_SELECT_H=1",
+            "-DHAVE_SYS_SOCKET_H=1",
+            "-DHAVE_SYS_TIMEB_H=1",
+            "-DHAVE_SYS_TIME_H=1",
+            "-DHAVE_SYS_TYPES_H=1",
+        });
     }
 
     // Option-specific changes
@@ -177,27 +136,14 @@ pub fn create(
         }
     }
 
-    // C files
-    ret.addCSourceFiles(.{ .root = dep.path(""), .files = srcs, .flags = flags.items });
-
-    ret.addIncludePath(dep.path("include"));
-    ret.addIncludePath(b.path(override_include_dir));
-    if (is_windows) {
-        ret.addIncludePath(b.path("override/config/win32"));
-        ret.linkSystemLibrary("ws2_32");
-    } else {
-        ret.addIncludePath(b.path("override/config/posix"));
-    }
-    ret.linkLibC();
-
-    return Library{ .step = ret };
+    return flags.toOwnedSlice();
 }
 
 /// Directories with our includes.
-const include_dir = "libxml2/include";
-const override_include_dir = "override/include";
+pub const include_dir = "libxml2/include";
+pub const override_include_dir = "override/include";
 
-const srcs = &.{
+pub const srcs = &.{
     "buf.c",
     "c14n.c",
     "catalog.c",

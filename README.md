@@ -21,22 +21,29 @@ While we all eagerly await the [Zig Package Manager](https://github.com/ziglang/
 the recommended way to use this is via git submodules or just embedding
 this into your repository.
 
-```zig
-const libxml2 = @import("path/to/libxml2.zig");
+Run the following command to add the source of this repo to `build.zig.zon`.
 
+```sh
+zig fetch --save <url of source tar ball>
+```
+
+Add the following lines to your `build.zig`
+
+```zig
 pub fn build(b: *std.build.Builder) !void {
     // ...
 
-    const lib = try libxml2.create(b, target, mode, .{
-        // These are the minimal options to NOT depend on any other libraries.
-        // If you ave these libraries, just set these to true.
-        .iconv = false,
-        .lzma = false,
-        .zlib = false,
+    const xml2 = b.dependency("libxml2", .{
+        .target = target,
+        .optimize = optimize,
+
+        // Put build options here
+        .xptr_locs = true,
     });
 
-    const exe = b.addExecutable("my-program", "src/main.zig");
-    lib.link(exe);
+    exe.linkLibrary(xml2.artifact("xml2"));
+
+    // ...
 }
 ```
 
